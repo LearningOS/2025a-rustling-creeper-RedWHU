@@ -1,2 +1,851 @@
-### StartUp
-> rustlings watch
+### How To StartUp?
+``` 
+ob@ob-VirtualBox:~/miniob/rustos/2025a-rustling-creeper-RedWHU$ rustlings watch
+
+```
+知识点网站：https://doc.rust-lang.org/book/ch06-02-match.html
+
+# 1. 枚举与模式匹配（Enums and Pattern Matching）
+
+## 1.1 枚举类型
+
+Rust 中的枚举（`enum`）允许你定义一个类型，该类型的值可以是一组限定值之一。每个枚举成员（variant）可以带有附加数据。例如：
+
+```rust
+enum Coin {
+    Penny,
+    Nickel,
+    Dime,
+    Quarter,
+}
+```
+
+可以为某些枚举成员附加数据：
+
+```rust
+enum Coin {
+    Penny,
+    Nickel,
+    Dime,
+    Quarter(UsState),
+}
+```
+
+## 1.2 模式匹配（match）
+
+Rust 的 `match` 控制流结构非常强大，可以将一个值与多个模式进行比较，并根据匹配结果执行不同的代码。它类似于其他语言的 switch，但更安全、更灵活。
+
+### 1.2.1 基本用法
+
+```rust
+fn value_in_cents(coin: Coin) -> u8 {
+    match coin {
+        Coin::Penny => 1,
+        Coin::Nickel => 5,
+        Coin::Dime => 10,
+        Coin::Quarter => 25,
+    }
+}
+```
+
+- `match` 后跟要匹配的表达式（如 `coin`）。
+- 每个分支由一个模式和对应的代码块组成，使用 `=>` 分隔。
+
+### 1.2.2 分支代码块
+
+- 分支代码简短时可省略 `{}`。
+- 多行代码需用 `{}` 包裹，最后一个表达式为该分支的返回值。
+
+```rust
+fn value_in_cents(coin: Coin) -> u8 {
+    match coin {
+        Coin::Penny => {
+            println!("Lucky penny!");
+            1
+        }
+        Coin::Nickel => 5,
+        Coin::Dime => 10,
+        Coin::Quarter => 25,
+    }
+}
+```
+
+## 1.3 模式绑定数据
+
+模式可以绑定到枚举成员中的数据，实现数据提取：
+
+```rust
+enum UsState {
+    Alabama,
+    Alaska,
+    // ...
+}
+
+enum Coin {
+    Penny,
+    Nickel,
+    Dime,
+    Quarter(UsState),
+}
+
+fn value_in_cents(coin: Coin) -> u8 {
+    match coin {
+        Coin::Penny => 1,
+        Coin::Nickel => 5,
+        Coin::Dime => 10,
+        Coin::Quarter(state) => {
+            println!("State quarter from {state:?}!");
+            25
+        }
+    }
+}
+```
+- 当匹配到 `Coin::Quarter(state)` 时，`state` 变量会绑定到该枚举成员内部的数据。
+
+## 1.4 匹配标准库枚举 Option<T>
+
+Rust 标准库的 `Option<T>` 枚举用于表示可能存在或不存在的值：
+
+```rust
+fn plus_one(x: Option<i32>) -> Option<i32> {
+    match x {
+        None => None,
+        Some(i) => Some(i + 1),
+    }
+}
+```
+- `Some(i)` 可以解包出内部数据。
+- Rust 强制要求 match 分支覆盖所有可能性，否则编译报错。
+
+## 1.5 穷举性与兜底分支
+
+Rust 的 `match` 必须穷举所有可能情况。可以用 catch-all（兜底）分支：
+
+```rust
+match dice_roll {
+    3 => add_fancy_hat(),
+    7 => remove_fancy_hat(),
+    other => move_player(other),
+}
+```
+- `other` 会绑定未被匹配到的值。
+
+不关注具体值时可用占位符 `_`：
+
+```rust
+match dice_roll {
+    3 => add_fancy_hat(),
+    7 => remove_fancy_hat(),
+    _ => reroll(),
+}
+```
+- `_` 匹配所有未被前面分支覆盖的值。
+
+## 1.6 要点总结
+
+- 枚举让你定义有限的一组类型变体，可以带数据。
+- `match` 可安全地处理多种分支，且必须穷举所有情况。
+- 模式绑定让你轻松提取枚举成员中的数据。
+- `Option<T>` 让你用类型系统防止空值错误。
+- `match` 的 catch-all 分支和 `_` 占位符让你优雅处理其他情况。
+
+## 2. 使用 if let 和 let...else 实现简洁的控制流
+
+### 2.1 if let语法
+
+- `if let` 允许你只关心某一种模式的值，忽略其他情况，语法更简洁。例如：
+
+    ```rust
+    let config_max = Some(3u8);
+    if let Some(max) = config_max {
+        println!("The maximum is configured to be {max}");
+    }
+    ```
+
+- 这样写只在值为 `Some` 时执行代码，变量会自动绑定到模式中数据。
+
+- 与 `match` 相比，`if let` 少了无用分支，但**不强制穷举所有情况**，需根据实际需求权衡。
+
+### 2.2 if let ... else
+
+- 可以配合 `else` 使用，处理主分支和兜底分支，等价于 `match` 的 `_` 分支：
+
+    ```rust
+    let mut count = 0;
+    if let Coin::Quarter(state) = coin {
+        println!("State quarter from {state:?}!");
+    } else {
+        count += 1;
+    }
+    ```
+
+### 2.3 let...else语法
+
+- Rust 1.65 后引入 `let...else`，适合在模式不匹配时直接进入 else 分支（通常是 return），否则绑定变量后继续主流程：
+
+    ```rust
+    fn describe_state_quarter(coin: Coin) -> Option<String> {
+        let Coin::Quarter(state) = coin else {
+            return None;
+        };
+
+        if state.existed_in(1900) {
+            Some(format!("{state:?} is pretty old, for America!"))
+        } else {
+            Some(format!("{state:?} is relatively new."))
+        }
+    }
+    ```
+
+- 这种写法让主流程更清晰，直接表达“幸福路径”。
+
+### 2.4 要点总结
+
+- `if let` 适用于只关心一种模式的场景，代码更简洁但不穷举所有分支。
+- `if let ... else` 补全主分支和兜底分支，等价于 `match` 的 `_` 分支。
+- `let...else` 让主流程更清晰，遇到不匹配直接走 else，主逻辑更“幸福路径”。
+- 选择 `match`、`if let` 或 `let...else`，要根据分支复杂度和是否需要穷举检查来权衡。
+- Rust 的枚举和 `Option<T>` 强化类型安全，优雅表达复杂分支逻辑。
+# 3. 包与Crate（Packages and Crates）
+
+## 3.1 Crate是什么？
+
+- **Crate** 是 Rust 编译器处理的最小代码单元。即使你只编译一个源文件，该文件也是一个 crate。
+- crate 可以包含模块（module），模块可以在其他文件中定义并被一起编译。
+
+## 3.2 Crate的两种类型
+
+- **二进制 crate（binary crate）**：可以编译为可执行程序，必须有 `main` 函数。例如命令行工具、服务器等。
+- **库 crate（library crate）**：没有 `main` 函数，不会编译为可执行文件，而是提供可复用功能（比如第三方库）。比如 `rand` crate 提供随机数功能。
+- 通常所说的 “crate”，指的是库 crate，也与 “库（library）” 概念互换。
+
+## 3.3 crate root
+
+- **crate root** 是编译器从哪里开始编译 crate 的源文件，构成 crate 的根模块。
+- 比如 `src/main.rs` 是二进制 crate 的 crate root，`src/lib.rs` 是库 crate 的 crate root。
+
+## 3.4 Package是什么？
+
+- **Package（包）** 是一个或多个 crate 的集合，提供一组功能。
+- 每个 package 都有一个 `Cargo.toml` 文件，描述如何构建这些 crate。
+- **Cargo** 本身也是一个 package，包含命令行工具的二进制 crate和供其它项目复用的库 crate。
+- 一个 package 可以包含任意数量的二进制 crate，但最多只能有一个库 crate。每个 package 至少包含一个 crate（库或二进制）。
+
+## 3.5 创建包的过程
+
+- 使用命令 `cargo new my-project` 创建包：
+    ```
+    $ cargo new my-project
+    $ ls my-project
+    Cargo.toml
+    src
+    $ ls my-project/src
+    main.rs
+    ```
+- 结果：目录下有 `Cargo.toml`（包描述文件）和 `src` 目录，里面有 `main.rs`。
+- `Cargo.toml` 没有直接标注 `src/main.rs`，因为 Cargo 遵循惯例：
+    - `src/main.rs` 是二进制 crate 的 crate root，名称与包名一致。
+    - 如果有 `src/lib.rs`，则为库 crate，其 crate root 也是该文件，名称与包名一致。
+    - 多个二进制 crate可以放在 `src/bin` 目录，每个文件对应一个独立的二进制 crate。
+
+## 3.6 总结要点
+
+- crate 是 Rust 的代码编译单元，有二进制和库两种类型。
+- package 是 crate 的集合，有自己的描述文件 `Cargo.toml`。
+- 一个 package 至少有一个 crate，最多一个库 crate，可以有多个二进制 crate。
+- Cargo 默认约定 crate 的入口文件位置，无需手动配置。
+
+# 4. 定义模块以控制作用域和可见性（Defining Modules to Control Scope and Privacy）
+
+## 4.1 模块系统简介
+
+本节将介绍 Rust 的模块系统，包括模块、路径（path）、`use` 关键字用于引入路径、`pub` 关键字用于公开项，还会涉及 `as` 关键字、外部包与 glob 操作符。
+
+### 模块速查表
+
+- **从 crate 根开始**：编译时，编译器首先查找 crate 根文件（一般是 `src/lib.rs` 或 `src/main.rs`）。
+- **声明模块**：在 crate 根文件中用 `mod 模块名;` 声明模块。
+    - 编译器会在以下位置查找模块内容：
+        - 直接用花括号包裹（内联）
+        - `src/模块名.rs`
+        - `src/模块名/mod.rs`
+- **声明子模块**：在非根文件中声明子模块，如 `mod vegetables;`。
+    - 编译器查找位置：
+        - 花括号内联
+        - `src/父模块/子模块.rs`
+        - `src/父模块/子模块/mod.rs`
+- **路径访问模块内容**：只要可见，可以用完整路径引用模块内容，如 `crate::garden::vegetables::Asparagus`。
+- **私有与公开**：模块内容默认对父模块私有。公开模块和项需用 `pub` 修饰。
+- **use 关键字**：在作用域内用 `use` 创建路径的别名，简化访问。例如 `use crate::garden::vegetables::Asparagus;` 后可直接用 `Asparagus`。
+- **模块结构举例**：
+
+    ```
+    backyard
+    ├── Cargo.lock
+    ├── Cargo.toml
+    └── src
+        ├── garden
+        │   └── vegetables.rs
+        ├── garden.rs
+        └── main.rs
+    ```
+
+    `src/main.rs` 内容：
+
+    ```rust
+    use crate::garden::vegetables::Asparagus;
+    pub mod garden;
+
+    fn main() {
+        let plant = Asparagus {};
+        println!("I'm growing {plant:?}!");
+    }
+    ```
+
+    `src/garden.rs` 内容：
+
+    ```rust
+    pub mod vegetables;
+    ```
+
+    `src/garden/vegetables.rs` 内容：
+
+    ```rust
+    #[derive(Debug)]
+    pub struct Asparagus {}
+    ```
+
+## 4.2 模块分组相关代码
+
+- 模块用于在 crate 内组织代码，提升可读性和可复用性。
+- 模块还能控制项的可见性，默认私有，用 `pub` 可公开。
+- 例如：模拟餐厅的库 crate，可用嵌套模块组织前厅和后厨相关功能。
+
+    ```rust
+    mod front_of_house {
+        mod hosting {
+            fn add_to_waitlist() {}
+            fn seat_at_table() {}
+        }
+        mod serving {
+            fn take_order() {}
+            fn serve_order() {}
+            fn take_payment() {}
+        }
+    }
+    ```
+
+- 这样可以根据功能分组代码，便于维护和查找。
+
+## 4.3 模块树结构
+
+- `src/main.rs` 和 `src/lib.rs` 是 crate 根文件，其内容构成根模块 `crate`。
+- 示例模块树：
+
+    ```
+    crate
+     └── front_of_house
+         ├── hosting
+         │   ├── add_to_waitlist
+         │   └── seat_at_table
+         └── serving
+             ├── take_order
+             ├── serve_order
+             └── take_payment
+    ```
+
+- 模块可嵌套，兄弟关系、父子关系明确，类似操作系统的文件目录树，用于代码组织和查找。
+## 4.4 路径引用、use 关键字与模块公开的实践总结
+
+### 4.4.1 路径（Path）的基本用法
+
+- 路径是模块树里的“地址”，类似于文件系统路径。
+- **绝对路径**：从 crate 根开始，例如 `crate::front_of_house::hosting::add_to_waitlist()`。
+- **相对路径**：从当前模块开始，例如 `front_of_house::hosting::add_to_waitlist()`，也可用 `self`、`super`。
+- 绝对路径类似于 Linux 的 `/usr/bin/xxx`，相对路径类似于当前目录下的 `bin/xxx`。
+- 选择哪种路径取决于你的代码结构和维护习惯。
+
+### 4.4.2 访问权限与 pub 公开声明
+
+- Rust 所有项默认对父模块私有（模块、函数、结构体、枚举、常量等）。
+- 父模块不能访问子模块的私有内容，但子模块可以访问父模块的项。
+- 用 `pub` 关键字将模块或项声明为公开，允许外部模块访问。
+- 只有模块和内部项都加 `pub`，外部模块才能访问。
+
+```rust
+mod front_of_house {
+    pub mod hosting {
+        pub fn add_to_waitlist() {}
+    }
+}
+```
+
+### 4.4.3 super 关键字：引用父模块内容
+
+- 用 `super::项名` 可以从当前模块访问父模块内容，类似文件系统的 `../xxx`。
+- 适合父子模块之间紧密协作，便于后期模块重构和移动。
+
+```rust
+fn deliver_order() {}
+
+mod back_of_house {
+    fn fix_incorrect_order() {
+        cook_order();
+        super::deliver_order();
+    }
+    fn cook_order() {}
+}
+```
+
+### 4.4.4 结构体和枚举的公开规则
+
+- 结构体加 `pub`：结构体本身公开，但字段默认私有，需要单独加 `pub` 才能被外部访问。
+- 枚举加 `pub`：所有枚举成员自动公开，无需单独加 `pub`。
+
+```rust
+pub struct Breakfast {
+    pub toast: String,         // 字段 toast 公开
+    seasonal_fruit: String,    // 字段 seasonal_fruit 私有
+}
+pub enum Appetizer {
+    Soup,
+    Salad,
+}
+```
+
+### 4.4.5 use 关键字：路径引入与简化
+
+- 用 `use` 可以简化长路径，在当前作用域直接使用项名。
+- 推荐函数用父模块路径，类型用完整路径，有助于代码可读性和定位来源。
+
+```rust
+use crate::front_of_house::hosting;
+hosting::add_to_waitlist();
+
+use std::collections::HashMap;
+let mut map = HashMap::new();
+```
+
+### 4.4.6 作用域问题与 use 的局限
+
+- `use` 只在声明它的作用域内有效。
+- 如果函数在子模块，需要在子模块内再写 `use`，或用 `super::xxx` 访问父模块引入的名字。
+
+### 4.4.7 名字冲突与 as 重命名
+
+- 当同名项来自不同模块时，可以用 `as` 给一个起别名，避免冲突。
+
+```rust
+use std::fmt::Result;
+use std::io::Result as IoResult;
+
+fn fun1() -> Result { /* ... */ }
+fn fun2() -> IoResult<()> { /* ... */ }
+```
+
+### 4.4.8 pub use —— 重导出（Re-export）
+
+- 普通 use 只让当前作用域可见，外部不能用简化名。
+- `pub use` 可让外部也用你的简化名，适合做 API 封装与重导出。
+
+```rust
+mod front_of_house {
+    pub mod hosting {
+        pub fn add_to_waitlist() {}
+    }
+}
+pub use crate::front_of_house::hosting;
+pub fn eat_at_restaurant() {
+    hosting::add_to_waitlist();
+}
+```
+
+### 4.4.9 引入外部包
+
+- 先在 `Cargo.toml` 中声明依赖，比如 `rand = "0.8.5"`。
+- 再用 `use rand::Rng;` 或 `use std::collections::HashMap;` 引入需要的 trait 或类型。
+
+### 4.4.10 嵌套路径与 glob 操作符
+
+- 可以用 `{}` 一次性引入同一模块下多个项，减少 use 行数。
+
+```rust
+use std::{cmp::Ordering, io};
+use std::io::{self, Write};
+```
+
+- 用 `use 路径::*;` 一次性引入路径下所有公开项，但需慎用，容易引发名字冲突或难以追踪来源。
+- glob 操作符一般用于测试或特殊场景。
+
+```rust
+use std::collections::*;
+```
+
+### 4.4.11 实践建议与总结
+
+- 路径用于定位模块树中的项，分为绝对和相对路径。
+- Rust 默认私有，必须用 pub 公开模块和项，才能被外部访问。
+- super 用于访问父模块内容，便于模块重构。
+- 结构体字段默认私有，枚举成员默认公开。
+- use 简化路径，提升代码可读性。
+- 推荐把主要功能放在库 crate，二进制 crate 仅作入口，提高复用性和 API 质量。
+- 遇到名字冲突用 as 重命名，pub use 可做 API 封装和重导出。
+- 外部包和标准库都用 use 引入，支持嵌套和 glob 简化 use 列表，但 glob 慎用。
+
+## 4.5 将模块拆分到不同文件
+
+### 4.5.1 为什么要拆分模块
+
+- 当模块内容较多时，可以将其移动到单独的文件，便于管理和导航，提高项目可维护性。
+
+### 4.5.2 拆分顶层模块
+
+- 只保留 `mod 模块名;` 声明，去掉模块体，表示该模块定义在同名文件中。
+  ```rust
+  // src/lib.rs
+  mod front_of_house;
+
+  pub use crate::front_of_house::hosting;
+
+  pub fn eat_at_restaurant() {
+      hosting::add_to_waitlist();
+  }
+  ```
+- 新建 `src/front_of_house.rs`，放入原本模块体的内容：
+  ```rust
+  // src/front_of_house.rs
+  pub mod hosting {
+      pub fn add_to_waitlist() {}
+  }
+  ```
+
+### 4.5.3 拆分子模块
+
+- 子模块（如 hosting）也是类似做法，将其声明为 `pub mod hosting;`，表示定义在 `src/front_of_house/hosting.rs` 文件中。
+  ```rust
+  // src/front_of_house.rs
+  pub mod hosting;
+  ```
+  ```rust
+  // src/front_of_house/hosting.rs
+  pub fn add_to_waitlist() {}
+  ```
+
+- 注意：子模块文件必须放在父模块目录下，否则编译器会认为它是顶层模块。
+
+### 4.5.4 模块文件查找规则
+
+- 顶层模块声明后，Rust 会依次查找以下文件：
+  - `src/模块名.rs`（推荐）
+  - `src/模块名/mod.rs`（旧风格，仍支持）
+- 子模块则查找：
+  - `src/父模块/子模块.rs`（推荐）
+  - `src/父模块/子模块/mod.rs`（旧风格）
+- 切勿同模块同时用两种风格，否则编译报错。可以不同模块用不同风格，但不推荐混用，会让项目难以理解。
+
+### 4.5.5 文件拆分后的路径和作用域
+
+- 拆分文件后，模块树结构、路径引用和函数调用都无需修改，依然有效。
+- 没有影响 `use` 的用法，`pub use crate::front_of_house::hosting` 依然正确。
+
+### 4.5.6 重要注意事项
+
+- `mod` 只是声明模块，并指定其代码所在文件，**不是像 C/C++ 的 include**，不会简单地把文件内容“拼接”到当前文件。
+- 一个文件只需被 mod 声明一次，之后都按路径访问，无需重复 include。
+- Rust 的文件结构和模块树紧密对应，利于大型项目组织。
+
+### 4.5.7 旧风格（mod.rs）和新风格的比较
+
+- 新风格推荐用 `模块名.rs`，目录下只用一个文件，易于识别和管理。
+- 旧风格用 `mod.rs`，目录下可能有多个 mod.rs，容易混淆，现代项目不推荐用。
+
+### 4.5.8 总结
+
+- Rust 支持将包分为多个 crate，每个 crate可拆分为多个模块，模块可拆分至不同文件。
+- 通过绝对路径和相对路径引用模块项，`use` 可简化路径。
+- 模块默认私有，用 `pub` 公开。
+- 文件拆分不会影响模块树结构和路径引用，便于代码维护和扩展。
+
+---
+# 5. 常用集合（Common Collections）
+
+## 5.1 Vec：使用向量存储值列表
+
+### 5.1.1 Vec 向量简介
+
+- Vec<T>（向量）是 Rust 最常用的集合类型之一。它能存储多个同类型的数据，并将这些值在内存中连续排列。
+- 适用于保存一组同类型数据，比如文件的每一行文本，或购物车中各个商品的价格。
+
+### 5.1.2 创建向量
+
+- 创建一个空向量可以用 `Vec::new()`，通常需要类型注解，因为没有初始值，Rust 不知道你要存什么类型。
+    ```rust
+    let v: Vec<i32> = Vec::new();
+    ```
+- 更常见的是用 `vec!` 宏创建有初值的向量，Rust 会自动推断类型。
+    ```rust
+    let v = vec![1, 2, 3];
+    ```
+
+### 5.1.3 向量的更新
+
+- 用 `push` 方法可以向向量尾部添加元素。需注意变量要用 `mut` 修饰为可变。
+    ```rust
+    let mut v = Vec::new();
+    v.push(5);
+    v.push(6);
+    v.push(7);
+    v.push(8);
+    ```
+
+### 5.1.4 读取向量元素
+
+- 通过下标索引或 `get` 方法访问向量元素。
+    ```rust
+    let v = vec![1, 2, 3, 4, 5];
+    let third: &i32 = &v[2];
+    let third: Option<&i32> = v.get(2);
+    ```
+- 索引越界时，`v[100]` 会导致 panic 程序崩溃；而 `v.get(100)` 返回 None，更适合处理用户输入等不确定情况。
+
+### 5.1.5 向量与借用规则
+
+- 持有元素引用时不能修改向量（比如 push），否则编译报错。原因是 push 可能导致内存重新分配，原有引用失效。
+    ```rust
+    let mut v = vec![1, 2, 3, 4, 5];
+    let first = &v[0];
+    v.push(6); // 编译错误：不能同时有可变和不可变借用
+    ```
+
+### 5.1.6 迭代向量元素
+
+- 用 for 循环遍历元素，获得不可变引用：
+    ```rust
+    let v = vec![100, 32, 57];
+    for i in &v {
+        println!("{i}");
+    }
+    ```
+- 想修改每个元素，用可变引用：
+    ```rust
+    let mut v = vec![100, 32, 57];
+    for i in &mut v {
+        *i += 50;
+    }
+    ```
+
+### 5.1.7 用枚举存储多类型元素
+
+- Vec 只能存储同类型数据。若需存储多种类型，可定义枚举，让不同类型作为枚举 variant。
+    ```rust
+    enum SpreadsheetCell {
+        Int(i32),
+        Float(f64),
+        Text(String),
+    }
+    let row = vec![
+        SpreadsheetCell::Int(3),
+        SpreadsheetCell::Text(String::from("blue")),
+        SpreadsheetCell::Float(10.12),
+    ];
+    ```
+- Rust 需在编译期知道所有可能类型，枚举方式适合已知类型场景。如果类型不确定，需用 trait object（后面章节讨论）。
+
+### 5.1.8 向量的释放（Drop）
+
+- 向量和它的所有元素会在离开作用域时自动释放，无需手动管理内存。
+    ```rust
+    {
+        let v = vec![1, 2, 3, 4];
+        // v 在这里有效
+    } // v 及内部元素在此被释放
+    ```
+
+### 5.1.9 小结
+
+- Vec 是 Rust 管理同类型值的基础集合类型，支持高效读写和安全的内存管理。
+- 通过枚举可实现多类型存储，借用规则确保数据安全。
+- 推荐熟悉 Vec 的 API，灵活使用 push、get、pop、迭代等方法。
+
+---
+## 5.2 使用字符串（String）存储 UTF-8 编码文本
+
+### 5.2.1 String 类型简介
+
+- Rust 有两种常用字符串类型：
+    - `String`：可增长、可变、拥有所有权的 UTF-8 编码字符串（标准库类型）。
+    - `&str`：字符串切片，通常是对某段已存在 UTF-8 编码数据的引用（核心语言类型）。
+- 二者都大量用于标准库，均为 UTF-8 编码。
+
+### 5.2.2 创建字符串
+
+- 创建空字符串：
+    ```rust
+    let mut s = String::new();
+    ```
+- 用 `to_string` 或 `String::from` 从字符串字面量创建字符串：
+    ```rust
+    let data = "initial contents";
+    let s = data.to_string();
+    let s2 = String::from("initial contents");
+    ```
+- 可存储任何 UTF-8 编码内容，包括多语言文本：
+    ```rust
+    String::from("こんにちは");
+    String::from("Здравствуйте");
+    ```
+
+### 5.2.3 更新字符串
+
+- 用 `push_str` 添加字符串切片（不会取得参数所有权）：
+    ```rust
+    let mut s = String::from("foo");
+    s.push_str("bar");
+    ```
+- 用 `push` 添加单个字符：
+    ```rust
+    let mut s = String::from("lo");
+    s.push('l'); // "lol"
+    ```
+
+### 5.2.4 字符串拼接
+
+- 用 `+` 操作符拼接字符串，注意第一个参数会被 move：
+    ```rust
+    let s1 = String::from("Hello, ");
+    let s2 = String::from("world!");
+    let s3 = s1 + &s2; // s1 被 move，s2 可继续使用
+    ```
+- 多字符串拼接推荐用 `format!` 宏，易读且不会移动参数所有权：
+    ```rust
+    let s1 = String::from("tic");
+    let s2 = String::from("tac");
+    let s3 = String::from("toe");
+    let s = format!("{s1}-{s2}-{s3}");
+    ```
+
+### 5.2.5 索引和切片
+
+- Rust 字符串不能用下标访问单个字符（如 s[0]），会编译报错。原因：
+    - String 是底层 Vec<u8> 包装，UTF-8 编码下一个字符可能占多个字节，简单下标会导致意外或错误。
+    - 索引操作预期 O(1) 时间，但字符串无法保证。
+- 可以用范围切片获取字节串，但要保证切片边界是字符边界，否则运行时 panic：
+    ```rust
+    let hello = "Здравствуйте";
+    let s = &hello[0..4]; // "Зд"
+    // &hello[0..1] 会 panic，因不是字符边界
+    ```
+
+### 5.2.6 字符串的三种层次
+
+- 字节（bytes）：底层存储，Vec<u8>
+- Unicode 标量值（char）：Rust 的 char 类型
+- 字符簇（grapheme cluster）：自然语言里的“字母”或“字符”，标准库不直接支持，可用第三方 crate
+
+### 5.2.7 字符串迭代
+
+- 遍历 Unicode 标量值（char）：
+    ```rust
+    for c in "Зд".chars() {
+        println!("{c}");
+    }
+    ```
+- 遍历原始字节：
+    ```rust
+    for b in "Зд".bytes() {
+        println!("{b}");
+    }
+    ```
+
+### 5.2.8 字符串的复杂性与安全性
+
+- Rust 默认要求正确处理 UTF-8 字符串，暴露底层复杂性，防止后期出现难以调试的非 ASCII 编码错误。
+- 标准库提供很多实用方法（如 contains、replace）帮助处理字符串。
+
+### 5.2.9 小结
+
+- String 类型封装了底层 Vec<u8>，支持高效、灵活的字符串操作。
+- 不能直接索引单个字符，需用迭代、切片或专用方法。
+- 推荐查阅文档，灵活使用字符串 API，安全处理多语言和 Unicode。
+
+---
+## 5.3 HashMap：用哈希表存储键值对
+
+### 5.3.1 HashMap 类型简介
+
+- HashMap<K, V> 用于存储键值映射。每个键（K 类型）对应一个值（V 类型），底层使用哈希函数决定其在内存中的位置。
+- 常见于需要用“键”而不是“索引”查找数据的场景，比如统计比赛分数、配置表、员工部门归类等。
+- Rust 里的 HashMap 不是自动引入 prelude，需要 `use std::collections::HashMap;`。
+
+### 5.3.2 创建和插入元素
+
+- 创建空哈希表，用 `HashMap::new()`，插入用 `insert`：
+    ```rust
+    use std::collections::HashMap;
+    let mut scores = HashMap::new();
+    scores.insert(String::from("Blue"), 10);
+    scores.insert(String::from("Yellow"), 50);
+    ```
+
+### 5.3.3 访问哈希表元素
+
+- 用 `get` 方法访问值，返回 `Option<&V>`，可用 `copied().unwrap_or(默认值)` 处理：
+    ```rust
+    let team_name = String::from("Blue");
+    let score = scores.get(&team_name).copied().unwrap_or(0);
+    ```
+- 用 for 循环遍历所有键值对（顺序不保证）：
+    ```rust
+    for (key, value) in &scores {
+        println!("{key}: {value}");
+    }
+    ```
+
+### 5.3.4 所有权与哈希表
+
+- 插入实现 Copy trait 的类型（如 i32）时是拷贝；插入 String 等拥有所有权的类型时是 move，哈希表成为新 owner。
+    ```rust
+    let field_name = String::from("Favorite color");
+    let field_value = String::from("Blue");
+    let mut map = HashMap::new();
+    map.insert(field_name, field_value); // field_name/field_value 失效
+    ```
+
+### 5.3.5 哈希表的更新和查找/插入模式
+
+- 同一键只能有一个值，多次插入同一键会覆盖旧值。
+    ```rust
+    scores.insert(String::from("Blue"), 10);
+    scores.insert(String::from("Blue"), 25); // "Blue" -> 25
+    ```
+- 用 `entry` 和 `or_insert` 只在键不存在时插入：
+    ```rust
+    scores.entry(String::from("Yellow")).or_insert(50);
+    scores.entry(String::from("Blue")).or_insert(50);
+    ```
+- 用 `entry` 能获得该键的可变引用，便于基于原值更新。例如统计单词出现次数：
+    ```rust
+    let text = "hello world wonderful world";
+    let mut map = HashMap::new();
+    for word in text.split_whitespace() {
+        let count = map.entry(word).or_insert(0);
+        *count += 1;
+    }
+    ```
+
+### 5.3.6 HashMap 默认哈希算法与安全性
+
+- 默认使用 SipHash，安全性高但不是最快，如果有性能需求可指定其它 hasher（实现 BuildHasher trait）。
+- 第三方 crate 提供多种哈希算法。
+
+### 5.3.7 小结与练习建议
+
+- HashMap 是存储键值对的基础集合，支持有效查找、插入和更新。
+- 适合统计、分组、映射等场景，所有权规则需注意。
+- 推荐结合向量和字符串完成如下练习：
+    - 统计整数列表的中位数和众数（需用向量和哈希表）。
+    - 实现字符串的 pig latin 转换（结合 UTF-8 编码处理）。
+    - 用哈希表和向量做公司员工部门管理与查询（按部门分组、按姓名排序）。
+- 查阅标准库文档，灵活利用 HashMap 的 API！
+
+---
