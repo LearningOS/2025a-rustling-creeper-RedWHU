@@ -3,6 +3,19 @@
 ob@ob-VirtualBox:~/miniob/rustos/2025a-rustling-creeper-RedWHU$ rustlings watch
 
 ```
+### exercise/无法跳转
+```
+rustlings lsp
+
+2. 利用 rust-project.json (适用于 rust-analyzer)
+高级用法：如果 exercises/ 目录结构复杂或是作为作业/习题项目，你可以用 rust-analyzer 的 rust-project.json
+（你的 main.rs 里有 LspArgs，说明支持自动生成 rust-project.json）
+
+运行 cargo run -- lsp 或 rustlings lsp，它会在项目根目录生成 rust-project.json
+确认 VSCode 已启用 rust-analyzer，并且项目根目录有 rust-project.json
+重启 VSCode，rust-analyzer 会自动分析 exercises/ 下的代码
+→ 此时 Ctrl+点击跳转应该有效
+```
 知识点网站：https://doc.rust-lang.org/book/ch06-02-match.html
 
 # 1. 枚举与模式匹配（Enums and Pattern Matching）
@@ -161,7 +174,10 @@ match dice_roll {
         println!("The maximum is configured to be {max}");
     }
     ```
-
+- 这里的意思是：
+    如果 config_max 是 Some(...)，就把里面的值绑定到变量 max 上，执行大括号里的代码。
+    如果是 None，什么也不做。
+    max 这个变量只在 if let 的花括号 { ... } 里面有效。
 - 这样写只在值为 `Some` 时执行代码，变量会自动绑定到模式中数据。
 
 - 与 `match` 相比，`if let` 少了无用分支，但**不强制穷举所有情况**，需根据实际需求权衡。
@@ -847,5 +863,334 @@ use std::collections::*;
     - 实现字符串的 pig latin 转换（结合 UTF-8 编码处理）。
     - 用哈希表和向量做公司员工部门管理与查询（按部门分组、按姓名排序）。
 - 查阅标准库文档，灵活利用 HashMap 的 API！
+
+---
+
+# 6. 错误处理（Error Handling，翻译）
+
+## 6.1 使用 panic! 处理不可恢复错误
+
+有时候代码中会发生无法解决的严重问题，这时 Rust 提供了 panic! 宏来中止程序。导致 panic 的方式主要有两种：一种是执行某些操作（如访问数组越界）引发 panic，另一种是直接调用 panic! 宏。不论哪种方式，程序都会进入 panic 状态——默认情况下，Rust 会打印错误信息，展开栈（unwind），清理现场并退出程序。你还可以通过环境变量让 Rust 在 panic 时显示调用栈，以便更好地定位错误来源。
+
+### 6.1.1 展开栈与中止（Unwinding or Aborting）
+
+默认情况下，发生 panic 时程序会展开栈，即逐层返回并清理每个函数的数据。这一过程较为耗时，因此 Rust 允许你选择另一种方案：立即中止（abort），这会直接结束程序而不做清理工作。这种情况下，程序占用的内存由操作系统负责回收。如果你希望生成的二进制文件尽可能小，可以在 Cargo.toml 的对应 [profile] 部分加入 panic = 'abort'。例如在 release 模式下使用：
+
+```toml
+[profile.release]
+panic = 'abort'
+```
+
+### 6.1.2 调用 panic! 的示例
+
+```rust
+fn main() {
+    panic!("crash and burn");
+}
+```
+
+运行后输出类似：
+
+```
+thread 'main' panicked at src/main.rs:2:5:
+crash and burn
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+```
+
+其中，src/main.rs:2:5 表示 panic! 发生在第2行第5个字符。一般情况下，这个报错会指向你自己的代码，但如果 panic! 是库代码内部触发的，显示的位置则是别人代码的位置。
+
+### 6.1.3 利用 backtrace 调查 panic 来源
+
+你可以设置环境变量 RUST_BACKTRACE=1 获得调用栈信息，这样能更好地定位问题。例如：
+
+```rust
+fn main() {
+    let v = vec![1, 2, 3];
+    v[99];
+}
+```
+
+访问 v[99] 会触发 panic，因为向量只有3个元素。Rust 会直接终止程序，并提示越界错误，防止出现 C 语言中常见的缓冲区越界和安全漏洞。
+
+如果你运行：
+
+```sh
+RUST_BACKTRACE=1 cargo run
+```
+
+就会看到类似如下的调用栈：
+
+```
+thread 'main' panicked at src/main.rs:4:6:
+index out of bounds: the len is 3 but the index is 99
+stack backtrace:
+   0: rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic_bounds_check
+   3: <usize as core::slice::index::SliceIndex<[T]>>::index
+   4: core::slice::index::<impl core::ops::index::Index<I> for [T]>::index
+   5: <alloc::vec::Vec<T,A> as core::ops::index::Index<I>>::index
+   6: panic::main
+   7: core::ops::function::FnOnce::call_once
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+```
+
+在这个输出中，调用栈第6行显示了你自己的 main 函数里发生了问题。定位 panic 时，从上往下查找，直到看到你自己写的文件，就是问题的根源。
+
+### 6.1.4 总结
+
+- panic! 用于处理不可恢复的严重错误，默认会展开栈并清理内存，也可以配置为直接中止程序。  
+- Rust 的 panic 会防止缓冲区越界等安全隐患。  
+- 通过 RUST_BACKTRACE 环境变量，可以获得详细的调用栈，帮助定位问题。  
+- 调试时，从调用栈中找到你自己的代码文件，即为问题起点。
+
+稍后章节还会讲何时应该用 panic! 处理错误，何时不应该用。接下来会介绍如何使用 Result 类型进行错误恢复。
+
+---
+## 6.2 使用 Result 处理可恢复错误
+
+大多数错误并不严重到需要让整个程序终止。有时候，某个函数失败的原因是可以解释和响应的。例如，如果你尝试打开一个文件但文件不存在，你可能希望新建一个文件，而不是直接终止进程。
+
+### 6.2.1 Result 枚举简介
+
+Rust 的 Result 枚举定义如下：
+
+```rust
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+```
+- T 表示成功时返回的值类型（Ok）。
+- E 表示错误时返回的错误类型（Err）。
+- Result 是泛型，可以用于各种不同的场景和类型。
+
+### 6.2.2 文件操作中的 Result
+
+例如，尝试打开文件：
+
+```rust
+use std::fs::File;
+fn main() {
+    let greeting_file_result = File::open("hello.txt");
+}
+```
+File::open 返回的是 Result<File, std::io::Error>，表示要么获得一个文件句柄（Ok），要么返回一个 IO 错误（Err）。
+
+### 6.2.3 用 match 处理 Result
+
+通常需要根据 Result 的值决定下一步操作：
+
+```rust
+let greeting_file = match greeting_file_result {
+    Ok(file) => file,
+    Err(error) => panic!("Problem opening the file: {error:?}"),
+};
+```
+- 成功时返回文件句柄，失败时 panic! 终止程序。
+
+### 6.2.4 匹配不同类型的错误
+
+如果希望对不同错误类型做不同处理，例如文件不存在时新建文件，其他错误时 panic：
+
+```rust
+use std::io::ErrorKind;
+let greeting_file = match greeting_file_result {
+    Ok(file) => file,
+    Err(error) => match error.kind() {
+        ErrorKind::NotFound => match File::create("hello.txt") {
+            Ok(fc) => fc,
+            Err(e) => panic!("Problem creating the file: {e:?}"),
+        },
+        _ => panic!("Problem opening the file: {error:?}"),
+    },
+};
+```
+
+### 6.2.5 更简洁的错误处理：unwrap_or_else
+
+可以用 Result 的方法来简化嵌套 match：
+
+```rust
+let greeting_file = File::open("hello.txt").unwrap_or_else(|error| {
+    if error.kind() == ErrorKind::NotFound {
+        File::create("hello.txt").unwrap_or_else(|error| {
+            panic!("Problem creating the file: {error:?}");
+        })
+    } else {
+        panic!("Problem opening the file: {error:?}");
+    }
+});
+```
+
+### 6.2.6 快捷方法：unwrap 和 expect
+
+- `unwrap`：如果 Result 是 Ok，返回值；如果是 Err，则 panic。
+- `expect`：同 unwrap，但可以自定义 panic! 的错误信息。
+
+```rust
+let greeting_file = File::open("hello.txt").expect("hello.txt should be included in this project");
+```
+
+### 6.2.7 错误传播（Error Propagation）
+
+有时候，函数内部遇到错误时不直接处理，而是把错误传递给调用者：
+
+```rust
+fn read_username_from_file() -> Result<String, io::Error> {
+    let username_file_result = File::open("hello.txt");
+    let mut username_file = match username_file_result {
+        Ok(file) => file,
+        Err(e) => return Err(e),
+    };
+    let mut username = String::new();
+    match username_file.read_to_string(&mut username) {
+        Ok(_) => Ok(username),
+        Err(e) => Err(e),
+    }
+}
+```
+- 函数返回 Result<String, io::Error>，调用者可以决定如何处理错误。
+
+### 6.2.8 错误传播简化：? 操作符
+
+Rust 提供了问号（?）操作符用于简化错误处理：
+
+```rust
+fn read_username_from_file() -> Result<String, io::Error> {
+    let mut username_file = File::open("hello.txt")?;
+    let mut username = String::new();
+    username_file.read_to_string(&mut username)?;
+    Ok(username)
+}
+```
+- 只要遇到 Err，直接返回给调用者。
+
+更简洁的写法：
+
+```rust
+fn read_username_from_file() -> Result<String, io::Error> {
+    fs::read_to_string("hello.txt")
+}
+```
+
+### 6.2.9 ? 操作符的适用范围
+
+- ? 只能用于返回类型为 Result 或 Option 的函数。
+- 不能在返回类型为 () 的 main 函数中使用，否则编译错误。
+- 解决方法：让 main 返回 Result<(), E> 或手动用 match 处理错误。
+
+```rust
+fn main() -> Result<(), Box<dyn Error>> {
+    let greeting_file = File::open("hello.txt")?;
+    Ok(())
+}
+```
+- main 返回 Ok(()) 时进程退出码为 0，返回 Err 时为非 0。
+
+### 6.2.10 ? 也可用于 Option
+
+例如：
+
+```rust
+fn last_char_of_first_line(text: &str) -> Option<char> {
+    text.lines().next()?.chars().last()
+}
+```
+- 如果某一步是 None，直接返回 None。
+
+> 注意：? 不能自动转换 Result 和 Option，需要用 ok/ok_or 等方法显式转换。
+
+---
+
+继续后续将介绍何时应该用 panic!，何时应该用 Result，以及如何选择错误处理策略。
+## 6.3 应该 panic! 还是返回 Result？
+
+那么，什么时候应该调用 panic!，什么时候应该返回 Result 呢？  
+如果代码发生 panic，则无法恢复。你可以对任何错误情况都 panic!，但这样做就是强行把错误变成不可恢复错误。如果你返回 Result，调用者就有选择权：可以尝试恢复，也可以在收到 Err 时自己 panic!。因此，**定义可能失败的函数时，推荐默认返回 Result。**
+
+### 6.3.1 示例、原型代码和测试场景
+
+在写示例代码、原型代码或测试时，直接 panic! 往往更简洁。比如用 unwrap/expect（可能 panic），这表示你还没决定怎么处理错误，或者只是为了演示。  
+测试里如果某方法失败，整个测试理应失败，因此 panic! 的 unwrap/expect 是合理的。
+
+### 6.3.2 你比编译器更清楚逻辑时
+
+当你能确定某操作一定成功（比如解析硬编码 IP 地址），但编译器无法推断时，可以用 expect，并在参数里备注原因：
+
+```rust
+use std::net::IpAddr;
+let home: IpAddr = "127.0.0.1"
+    .parse()
+    .expect("Hardcoded IP address should be valid");
+```
+
+如果 IP 地址是硬编码且有效，expect 是安全的。如果未来 IP 来源变成用户输入，就应改用更健壮的错误处理。
+
+### 6.3.3 错误处理的指导原则
+
+建议在**可能导致程序进入坏状态**时 panic!。坏状态指破坏了某种假设、保证、契约或不变式（如收到无效、矛盾或缺失值），且满足以下之一：
+- 这种坏状态**不可预期**（不是偶尔发生的正常错误，如用户输入格式错误）。
+- 你的后续代码假定一定不是坏状态，否则就得步步校验，很繁琐。
+- 没法用类型系统表达这种约束。
+
+如果别人调用你的库时传入了不合理值，最好返回错误让调用者决定如何处理。但如果继续运行可能导致不安全或有害，直接 panic! 更好，提醒调用者在开发阶段修正 bug。  
+如果调用外部代码返回了你无法修复的非法状态，也可以 panic!。
+
+但如果失败是**可预期的**（如解析器收到格式错误数据、HTTP请求被限流），更适合返回 Result，让调用者自己处理。
+
+如果你的代码操作有安全风险（如用无效值），应先验证输入，并在无效时 panic!。这就是标准库在数组越界时 panic! 的原因，防止安全漏洞。  
+很多函数有契约：只有满足输入要求才保证行为。契约违背时 panic! 是合理的，因为这是调用者的 bug，且无法恢复。应该在 API 文档里说明哪些情况会 panic!。
+
+多处手动校验参数会很繁琐，Rust 的类型系统可以帮你自动检查。例如参数类型用 u32 就不可能为负数；如果参数类型不是 Option，就一定有值，不必在运行时再检查。
+
+### 6.3.4 用自定义类型做校验
+
+可以用自定义类型进一步确保值有效。例如猜数游戏要求输入范围 1~100：
+
+普通做法：
+
+```rust
+let guess: i32 = match guess.trim().parse() {
+    Ok(num) => num,
+    Err(_) => continue,
+};
+if guess < 1 || guess > 100 {
+    println!("The secret number will be between 1 and 100.");
+    continue;
+}
+```
+
+更好的做法：封装为 Guess 类型，只允许创建 1~100 的值：
+
+```rust
+pub struct Guess {
+    value: i32,
+}
+impl Guess {
+    pub fn new(value: i32) -> Guess {
+        if value < 1 || value > 100 {
+            panic!("Guess value must be between 1 and 100, got {value}.");
+        }
+        Guess { value }
+    }
+    pub fn value(&self) -> i32 {
+        self.value
+    }
+}
+```
+这样别的代码只能通过 Guess::new 创建 Guess，保证范围有效。Guess 的字段设置为私有，防止外部代码绕过校验。
+
+用 Guess 作为参数/返回值，函数就不用再反复检查范围了。
+
+### 6.3.5 总结
+
+Rust 的错误处理机制（panic! 和 Result）让你能写出更健壮的代码。  
+- panic! 表示程序进入了无法处理的状态，直接终止进程。
+- Result 用类型系统表达操作可能失败，可恢复。
+
+合理使用 panic! 和 Result，让你的代码在遇到问题时更可靠。
+
+接下来将介绍泛型的原理和用法。
 
 ---
