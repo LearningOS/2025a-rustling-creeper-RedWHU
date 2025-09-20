@@ -1786,3 +1786,549 @@ fn it_works() -> Result<(), String> {
 - 测试不仅验证正确性，还能作为代码文档，指导后续开发和维护。
 
 ---
+## 控制测试的运行方式
+
+Rust 的测试框架允许开发者灵活控制测试运行的方式，包括并发、输出、筛选和忽略等。了解这些控制方法有助于提高测试效率和调试体验。
+
+---
+
+## 测试运行模式与命令行参数
+
+- `cargo test` 会编译你的代码并运行所有测试（默认并行）。
+- 有些参数传给 `cargo test`，有些参数传给测试二进制文件，二者用 `--` 分隔。
+- 查看帮助：  
+  - `cargo test --help` 查看 cargo 层参数
+  - `cargo test -- --help` 查看测试运行器参数
+
+---
+
+## 并行与串行运行测试
+
+- **默认并行**（多线程）运行所有测试，加快测试速度。
+- 测试间必须**互不依赖**，不能共享状态（如文件、环境变量），否则可能互相干扰导致假失败。
+- 例如，多个测试同时读写同一个文件可能导致冲突。
+
+### 串行运行测试
+
+如需串行运行所有测试，可指定线程数为 1：
+
+```bash
+cargo test -- --test-threads=1
+```
+
+这样测试会逐个运行，适用于有共享状态或需严格顺序的场景。
+
+---
+
+## 测试输出展示
+
+- **默认行为**：通过 `println!` 打印的内容只会在测试失败时显示，测试通过则被捕获不显示。
+- 这样可以保持测试结果简洁，专注于通过/失败信息。
+
+### 显示所有测试输出
+
+如果想看所有测试的标准输出（包括通过的测试），加 `--show-output`：
+
+```bash
+cargo test -- --show-output
+```
+
+---
+
+## 只运行指定测试
+
+- 可以通过传递测试名，只运行部分测试：
+
+```bash
+cargo test test_name
+```
+
+- 只运行名字包含指定字符串的所有测试：
+
+```bash
+cargo test partial_name
+```
+
+例如，下面代码有三条测试：
+
+```rust
+#[test]
+fn add_two_and_two() { ... }
+#[test]
+fn add_three_and_two() { ... }
+#[test]
+fn one_hundred() { ... }
+```
+
+- 只运行 `one_hundred` 测试：
+
+```bash
+cargo test one_hundred
+```
+
+- 运行所有名字包含 `add` 的测试：
+
+```bash
+cargo test add
+```
+
+---
+
+## 忽略部分测试
+
+- 某些测试可能很耗时或特殊，不希望每次都运行，可以加上 `#[ignore]` 属性：
+
+```rust
+#[test]
+#[ignore]
+fn expensive_test() {
+    // 可能运行一小时的测试代码
+}
+```
+
+- 默认情况下被忽略的测试不会运行，但会在测试结果中列出。
+
+### 只运行被忽略的测试
+
+```bash
+cargo test -- --ignored
+```
+
+### 包含所有测试（包括 ignored）
+
+```bash
+cargo test -- --include-ignored
+```
+
+---
+
+## 总结关键点
+
+- Rust 测试默认并行运行，需避免测试间共享和互相干扰。
+- 可以控制测试线程数，串行运行所有测试。
+- 输出只在测试失败时显示，通过时可用 `--show-output` 展示所有输出。
+- 可通过测试名/部分名筛选运行指定测试。
+- 用 `#[ignore]` 跳过特殊测试，需要时可单独运行。
+- 灵活控制测试运行方式，提高效率和调试便利性。
+
+---
+## 测试组织
+
+Rust 社区将测试分为两大类：**单元测试（unit tests）**和**集成测试（integration tests）**。这两类测试互补，确保你的库在细粒度和整体层面都能正确工作。
+
+---
+
+## 单元测试（Unit Tests）
+
+- 目的：**独立测试代码的每个单元**，快速定位问题。
+- 位置：放在 `src` 目录下，与被测试代码同文件。
+- 组织方式：每个文件内通常有一个 `#[cfg(test)] mod tests` 测试模块。
+- `#[cfg(test)]`：编译选项，只有运行 `cargo test` 时才编译测试代码，不影响正常构建和产物体积。
+
+### 示例：
+
+```rust
+pub fn add(left: u64, right: u64) -> u64 {
+    left + right
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn it_works() {
+        let result = add(2, 2);
+        assert_eq!(result, 4);
+    }
+}
+```
+
+### 测试私有函数
+
+Rust 的模块系统允许测试私有函数（无 `pub` 修饰），只需在测试模块用 `use super::*;` 引入父模块内容：
+
+```rust
+pub fn add_two(a: u64) -> u64 {
+    internal_adder(a, 2)
+}
+
+fn internal_adder(left: u64, right: u64) -> u64 {
+    left + right
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn internal() {
+        let result = internal_adder(2, 2);
+        assert_eq!(result, 4);
+    }
+}
+```
+
+---
+
+## 集成测试（Integration Tests）
+
+- 目的：**像外部用户一样测试库的公共 API**，验证各模块协作正确。
+- 位置：顶层 `tests` 目录，每个文件一个 crate，独立编译。
+- 每个测试文件需 `use crate_name::public_fn` 显式导入 API。
+- 无需 `#[cfg(test)]`，cargo 会自动只在测试时编译。
+
+### 示例目录结构
+
+```
+adder
+├── Cargo.toml
+├── src
+│   └── lib.rs
+└── tests
+    └── integration_test.rs
+```
+
+### 示例代码
+
+```rust name=tests/integration_test.rs
+use adder::add_two;
+
+#[test]
+fn it_adds_two() {
+    let result = add_two(2);
+    assert_eq!(result, 4);
+}
+```
+
+### 运行指定集成测试文件
+
+```bash
+cargo test --test integration_test
+```
+
+---
+
+## 集成测试的辅助模块
+
+- 多个测试文件可用 `tests/common/mod.rs` 共享辅助代码。
+- 不能用 `tests/common.rs`，否则会被当成测试 crate，显示在测试结果中。
+- 使用 `mod common;` 引入，调用其中函数。
+
+### 示例
+
+```
+tests/
+├── common/
+│   └── mod.rs
+└── integration_test.rs
+```
+
+```rust name=tests/common/mod.rs
+pub fn setup() {
+    // 通用测试初始化代码
+}
+```
+
+```rust name=tests/integration_test.rs
+use adder::add_two;
+mod common;
+
+#[test]
+fn it_adds_two() {
+    common::setup();
+    let result = add_two(2);
+    assert_eq!(result, 4);
+}
+```
+
+---
+
+## 二进制 crate 的集成测试
+
+- 如果项目只有 `src/main.rs`，不能直接为 main 代码写集成测试。
+- 推荐将主要逻辑放到 `src/lib.rs`，main.rs 只做调用，这样可对 lib 进行集成测试。
+
+---
+
+## 小结
+
+- 单元测试关注细节、可测试私有代码，写在源码文件内。
+- 集成测试关注整体协作、只测试公共 API，写在 `tests` 目录下，每个文件单独 crate。
+- Rust 测试机制灵活，能覆盖从底层到高层的所有场景，是确保代码行为正确的关键工具。
+
+---
+# 9. 函数式语言特性：迭代器与闭包（详细代码解读）
+
+Rust 支持现代函数式编程语言的特性，尤其是**迭代器（Iterators）**和**闭包（Closures）**，让代码简洁、表达力强、安全高效。本节将详细逐行解读闭包相关代码示例。
+
+---
+
+## 9.1 闭包：捕获环境的匿名函数
+
+闭包是可以捕获其定义时环境变量的匿名函数。它们既可以赋值给变量，也可以作为参数传递。相比普通函数，闭包能自动捕获作用域中的变量，实现代码复用和行为定制。
+
+---
+
+### 1. 闭包的基本语法与环境捕获
+
+闭包的定义和使用：
+
+```rust
+let x = 5;                                 // 定义一个变量 x，值为 5
+let closure = |y| x + y;                   // 定义一个闭包，参数是 y，返回 x + y。闭包自动捕获 x 的值
+println!("{}", closure(3));                 // 调用闭包，传入 3，实际执行 x + 3，即 5 + 3，输出 8
+```
+
+- `let x = 5;` 创建一个普通变量。
+- `let closure = |y| x + y;` 定义一个闭包，参数为 y，自动捕获外部变量 x。
+- `closure(3)` 实际等价于 5 + 3，因为此闭包会记住 x 的值。
+
+---
+
+### 2. 闭包类型推断与可选类型标注
+
+闭包参数和返回值类型通常自动推断，也可以手动指定：
+
+```rust
+let add = |x: i32, y: i32| -> i32 { x + y };  // 明确指定参数类型和返回值类型
+```
+
+- `|x: i32, y: i32| -> i32 { x + y }` 是完整写法，参数类型和返回类型都显式声明。
+
+函数与闭包的写法对比：
+
+```rust
+fn add_one_v1(x: u32) -> u32 { x + 1 }        // 普通函数定义
+let add_one_v2 = |x: u32| -> u32 { x + 1 };   // 类型完全标注的闭包
+let add_one_v3 = |x| { x + 1 };               // 无类型标注，类型由上下文推断
+let add_one_v4 = |x| x + 1;                   // 单表达式闭包可省略大括号
+```
+
+- 前两种写法类型明确，后两种需依赖推断。Rust 编译器会根据首次调用推断类型，后续调用必须一致。
+
+---
+
+### 3. 闭包的捕获方式详解
+
+闭包可以三种方式捕获环境变量：
+
+- **不可变借用（&T）**：只读环境变量。
+- **可变借用（&mut T）**：可修改环境变量。
+- **所有权转移（T）**：获得变量所有权，适用于多线程或跨作用域场景。
+
+具体示例：
+
+```rust
+let list = vec![1, 2, 3];                    // 定义一个整型向量
+let show = || println!("{:?}", list);        // 闭包只读 list，不修改
+show();                                      // 输出 [1, 2, 3]
+
+let mut list = vec![1, 2, 3];                // 定义可变向量
+let mut change = || list.push(4);            // 闭包可修改 list（push 新元素）
+change();                                    // list 变为 [1, 2, 3, 4]
+
+let list = vec![1, 2, 3];                    // 定义向量
+std::thread::spawn(move || println!("{:?}", list)); // move 关键字使闭包获得 list 的所有权
+```
+
+- 第一个例子：闭包只读外部变量，后续还可访问 list。
+- 第二个例子：闭包修改外部变量，必须声明变量为 `mut`，闭包也需 `mut`。
+- 第三个例子：闭包通过 `move` 获得变量所有权，适合用于线程，避免借用冲突。
+
+---
+
+### 4. 闭包的 Fn/FnMut/FnOnce Trait 及标准库方法
+
+根据捕获环境变量的方式，闭包会自动实现：
+
+- **FnOnce**：所有闭包至少实现。消耗所有权，只能调用一次。
+- **FnMut**：可多次调用，可修改环境变量。
+- **Fn**：可多次调用，只读或不捕获环境变量。
+
+#### 标准库方法例子
+
+- `Option::unwrap_or_else` 要求闭包实现 `FnOnce`，因为只会调用一次：
+
+    ```rust
+    let opt: Option<i32> = None;
+    let v = opt.unwrap_or_else(|| 42); // 闭包只会被调用一次
+    ```
+
+- `slice::sort_by_key` 要求闭包实现 `FnMut`，因为会对每个元素调用多次：
+
+    ```rust
+    let mut arr = [3, 1, 2];
+    arr.sort_by_key(|x| *x); // 闭包被多次调用
+    ```
+
+---
+
+### 5. 总结
+
+- 闭包是 Rust 函数式编程的核心特性，可以灵活捕获环境变量。
+- 类型推断让闭包书写简洁，也可以手动标注类型。
+- 自动实现 Fn/FnMut/FnOnce trait，影响闭包如何被标准库方法接受。
+- 闭包与迭代器等组合使用，可让数据处理代码更简洁高效。
+- 理解闭包的捕获方式和 trait 实现，有助于编写更高效、更安全的 Rust 代码。
+
+---
+## 9.2 迭代器：按序处理元素（详细代码解读）
+
+Rust 的迭代器模式让你可以优雅、高效地处理数据序列，无需手动实现遍历逻辑。本节将逐行详细讲解关键代码，帮助你理解每一步的作用和底层机制。
+
+---
+
+### 1. 创建迭代器
+
+```rust
+let v1 = vec![1, 2, 3];        // 创建一个向量，包含三个整数
+let v1_iter = v1.iter();       // 调用 .iter() 方法，返回一个遍历 v1 的迭代器（元素类型为 &i32）
+```
+- `vec![1, 2, 3]` 创建了一个动态数组（向量）。
+- `.iter()` 返回一个迭代器，每个元素是 v1 中元素的不可变引用（&i32）。
+- 将迭代器赋值给变量 `v1_iter`，后续可以用它遍历 v1。
+
+---
+
+### 2. 使用迭代器
+
+```rust
+let v1 = vec![1, 2, 3];
+let v1_iter = v1.iter();
+
+for val in v1_iter {
+    println!("Got: {val}");
+}
+```
+- `for val in v1_iter` 语法自动消耗迭代器，每次循环取得一个元素引用。
+- `println!("Got: {val}")` 打印当前元素的值。
+- Rust 编译器自动处理迭代器的生命周期和可变性，无需关心迭代细节。
+- 注意：一旦 for 循环结束，迭代器已被消耗，不能重复使用。
+
+---
+
+### 3. Iterator Trait 和 next 方法
+
+Rust 的迭代器都实现了标准库的 `Iterator` trait：
+
+```rust
+pub trait Iterator {
+    type Item;
+    fn next(&mut self) -> Option<Self::Item>;
+}
+```
+- `type Item;`：定义迭代器返回元素的类型（如 &i32）。
+- `next(&mut self)`：每次调用返回下一个元素（包裹在 Option 里）。
+    - 如果有元素，返回 `Some(item)`。
+    - 如果序列结束，返回 `None`。
+
+#### 例子：手动调用 next
+
+```rust
+#[test]
+fn iterator_demonstration() {
+    let v1 = vec![1, 2, 3];               // 创建一个向量
+    let mut v1_iter = v1.iter();          // 创建迭代器，需声明为 mut，因为 next 会改变迭代器状态
+
+    assert_eq!(v1_iter.next(), Some(&1)); // 取第一个元素，返回 &1
+    assert_eq!(v1_iter.next(), Some(&2)); // 取第二个元素，返回 &2
+    assert_eq!(v1_iter.next(), Some(&3)); // 取第三个元素，返回 &3
+    assert_eq!(v1_iter.next(), None);     // 没有更多元素，返回 None
+}
+```
+- 每次 next 都会消耗迭代器一个元素，指针向后移动。
+- 用 `assert_eq!` 验证每一步的返回值，确保迭代正确。
+- 迭代器只能从前到后遍历一次，不能回退。
+
+---
+
+### 4. 消耗迭代器的方法
+
+Rust 的 Iterator trait 有许多方法可以“一次性消耗”迭代器，如 `sum`：
+
+```rust
+#[test]
+fn iterator_sum() {
+    let v1 = vec![1, 2, 3];
+    let v1_iter = v1.iter();           // 创建迭代器
+    let total: i32 = v1_iter.sum();    // sum 消耗迭代器，累加所有元素，返回总和
+    assert_eq!(total, 6);              // 验证总和为 6
+}
+```
+- `sum()` 方法会遍历每个元素，累计求和，最终返回结果。
+- 一旦 sum 消耗了迭代器，迭代器不能再用。
+- 其它类似方法还有 `count`, `max`, `min` 等。
+
+---
+
+### 5. 迭代器适配器：返回新的迭代器
+
+“迭代器适配器”不会直接消耗迭代器，而是返回一个新的迭代器。例如 `map`：
+
+```rust
+let v1: Vec<i32> = vec![1, 2, 3];                       // 创建一个整数向量
+let v2: Vec<_> = v1.iter().map(|x| x + 1).collect();    // 用 map 生成新迭代器，每个元素加一，最后 collect 收集成新向量
+assert_eq!(v2, vec![2, 3, 4]);
+```
+- `map(|x| x + 1)`：对每个元素应用闭包 `|x| x + 1`，返回新迭代器。
+- `collect()`：消耗新迭代器，收集所有元素到一个集合（如 Vec）。
+- 注意：如果没有 collect/sum/count 等消耗方法，map 不会真正执行，因为迭代器是**惰性**的。
+
+---
+
+### 6. 捕获环境的闭包与迭代器适配器
+
+许多迭代器适配器（如 filter）都可以用捕获外部变量的闭包：
+
+```rust
+#[derive(PartialEq, Debug)]
+struct Shoe {
+    size: u32,
+    style: String,
+}
+
+fn shoes_in_size(shoes: Vec<Shoe>, shoe_size: u32) -> Vec<Shoe> {
+    shoes.into_iter().filter(|s| s.size == shoe_size).collect()
+}
+```
+- `shoes.into_iter()`：获得所有权，遍历每个 Shoe 实例。
+- `filter(|s| s.size == shoe_size)`：用闭包筛选鞋码匹配的鞋子。
+    - 闭包 `|s| s.size == shoe_size` 捕获了外部变量 `shoe_size`。
+- `collect()`：把筛选结果收集到新向量里。
+
+#### 测试示例
+
+```rust
+#[test]
+fn filters_by_size() {
+    let shoes = vec![
+        Shoe { size: 10, style: String::from("sneaker") },
+        Shoe { size: 13, style: String::from("sandal") },
+        Shoe { size: 10, style: String::from("boot") },
+    ];
+
+    let in_my_size = shoes_in_size(shoes, 10); // 只选出鞋码为 10 的鞋子
+
+    assert_eq!(
+        in_my_size,
+        vec![
+            Shoe { size: 10, style: String::from("sneaker") },
+            Shoe { size: 10, style: String::from("boot") },
+        ]
+    );
+}
+```
+- 用断言确保只返回鞋码为 10 的鞋子。
+- 展现了迭代器+闭包组合的强大筛选能力。
+
+---
+
+### 7. 总结
+
+- Rust 的迭代器让你用更简洁、更安全的方式处理序列数据。
+- 迭代器是惰性的，只有被消耗时才真正执行。
+- 可以链式组合多个适配器，灵活处理数据。
+- 闭包能捕获环境变量，配合迭代器适配器非常强大。
+- 推荐：多用迭代器和闭包，简化代码逻辑，提高可读性和安全性。
+
+---
