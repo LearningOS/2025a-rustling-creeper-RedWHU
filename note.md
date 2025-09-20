@@ -1510,7 +1510,7 @@ fn returns_summarizable() -> impl Summary {
 
 ### 7.4.7 条件实现方法/trait
 
-可对泛型类型加 trait bound，条件实现方法：
+可对泛型类型加 trait bound，**条件实现方法**：
 
 ```rust
 impl<T: Display + PartialOrd> Pair<T> {
@@ -1528,3 +1528,261 @@ impl<T: Display> ToString for T { /* ... */ }
 ## 7.5 总结
 
 Trait 和 trait bound 让我们用泛型参数减少重复，也能规定类型必须实现某种行为。编译器用 trait bound 检查类型行为，错误在编译时发现而不是运行时，提高了安全性和性能。
+
+---
+
+## 7.6 生命周期（Lifetimes）详解与总结
+
+### 7.6.1 生命周期的作用
+生命周期（lifetime）是 Rust 的一种泛型类型，但它不是关注“类型”的行为，而是关注“引用”在内存中的有效性。生命周期确保引用在使用时总是有效，防止悬垂引用（dangling reference）。
+
+### 7.6.2 生命周期防止悬垂引用
+Rust 的编译器有一个“借用检查器”（borrow checker），它会比较作用域，确保所有借用都是有效的。例如：
+
+```rust
+fn main() {
+    let r;
+    {
+        let x = 5;
+        r = &x;
+    }
+    println!("r: {r}"); // 这里 r 指向了已经离开作用域的 x，编译不通过
+}
+```
+Rust 会报错，因为 r 的生命周期比 x 长，r 持有的是“无效的”引用。
+
+### 7.6.3 生命周期标注（Lifetime Annotation）
+有时候 Rust 不能自动推断出引用的生命周期关系，需要我们手动标注。生命周期标注用于描述参数和返回值之间的关系，让编译器能正确分析引用是否有效。例如：
+
+```rust
+fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
+    if x.len() > y.len() { x } else { y }
+}
+```
+这里 `'a` 是生命周期参数，表示 x、y 和返回值的生命周期一致。这样 Rust 能确保返回值引用总是有效。
+
+### 7.6.4 生命周期的实际意义
+生命周期标注并不会改变引用实际存在的时间，只是“说明”它们之间的关系。
+当函数返回引用时，返回值的生命周期必须和参数的生命周期相关联，否则会有悬垂引用风险。
+
+### 7.6.5 结构体中的生命周期
+结构体如果包含引用类型字段，也必须标注生命周期。例如：
+
+```rust
+struct ImportantExcerpt<'a> {
+    part: &'a str,
+}
+```
+这说明 ImportantExcerpt 不能比 part 指向的内容活得更久。
+
+### 7.6.6 生命周期省略规则（Lifetime Elision）
+大多数常见情况 Rust 能自动推断不需要显式标注生命周期，有三条省略规则：
+
+1. 每个引用参数有自己的生命周期参数。
+2. 如果只有一个引用参数，则它的生命周期直接赋给返回值。
+3. 如果有多个输入生命周期，但其中一个是 &self 或 &mut self（方法签名），那么返回值生命周期就是 self 的生命周期。
+
+例如：
+
+```rust
+fn first_word(s: &str) -> &str {
+    // 省略生命周期，因为规则能自动推断
+}
+```
+
+### 7.6.7 特殊生命周期 `'static`
+所有字符串字面量都拥有 `'static` 生命周期，即它们在程序整个运行期间都是有效的。例如：
+
+```rust
+let s: &'static str = "I have a static lifetime.";
+```
+
+### 7.6.8 泛型、trait bound 和生命周期一起用
+可以同时指定泛型类型参数、trait bound 和生命周期参数。例如：
+
+```rust
+fn longest_with_an_announcement<'a, T>(
+    x: &'a str,
+    y: &'a str,
+    ann: T,
+) -> &'a str
+where
+    T: std::fmt::Display,
+{
+    println!("Announcement! {ann}");
+    if x.len() > y.len() { x } else { y }
+}
+```
+这里 `'a` 是生命周期参数，T 是泛型参数，`T: Display` 是 trait bound。
+
+### 7.6.9 总结
+- 生命周期让引用的安全性在编译期就得到保证，防止悬垂引用或非法内存访问。
+- 大多数情况下 Rust 能自动推断生命周期，只有涉及多种引用关系时才需手动标注。
+- 生命周期和泛型、trait bound一样，都是 Rust 泛型系统的一部分，让代码灵活又安全。
+- 生命周期标注描述的是引用间的关系，不会影响实际内存的存活时间。
+- Rust 的生命周期机制虽然上手有点陌生，但它是实现高性能和安全的关键特性之一。只要理解了“生命周期是为了描述引用之间的关系”，并善用生命周期省略规则，就能写出既灵活又安全的代码。
+# 8 如何编写测试
+
+Rust 提供了强大的自动化测试支持，帮助我们确保代码逻辑的正确性。测试本质上是**验证程序行为是否符合预期**，而不仅仅是类型系统和编译器能保证的部分。本节详细介绍 Rust 测试机制、语法和常用技巧。
+
+---
+
+## 测试函数的基本结构
+
+- 测试是普通的 Rust 函数，只需加上属性 `#[test]` 即可成为测试函数。
+- 测试通常**准备数据** → **调用代码** → **断言结果**。
+
+### 示例
+
+```rust
+#[test]
+fn it_works() {
+    let result = add(2, 2);
+    assert_eq!(result, 4); // 断言：result 等于 4
+}
+```
+
+- `#[test]`：告诉测试框架该函数是测试。
+- `assert_eq!`：比较两个值是否相等，若不等则测试失败。
+
+---
+
+## 测试模块与可见性
+
+- 测试通常写在 `#[cfg(test)] mod tests` 模块中。
+- 测试模块是普通的 Rust 模块，遵循模块可见性规则。
+- 若需要访问外部代码，需 `use super::*;`。
+
+### 示例
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exploration() {
+        let result = add(2, 2);
+        assert_eq!(result, 4);
+    }
+}
+```
+
+---
+
+## 断言宏详解
+
+### 1. `assert!`
+
+- 检查表达式是否为真，为假则 panic 导致测试失败。
+
+```rust
+assert!(result > 0);
+```
+
+### 2. `assert_eq!` 和 `assert_ne!`
+
+- `assert_eq!(a, b)`：断言 a == b，测试失败时输出 a、b 的值。
+- `assert_ne!(a, b)`：断言 a != b，失败时同样输出详细信息。
+
+```rust
+assert_eq!(sum, 42);
+assert_ne!(answer, "no");
+```
+
+- 这两个宏对比时会自动打印左右值，方便定位问题。
+
+### 3. 自定义失败信息
+
+- 可以在断言后加格式化字符串作为自定义提示。
+
+```rust
+assert!(result.contains("Carol"), "Greeting should contain name, got `{}`", result);
+```
+
+---
+
+## 测试失败与 panic
+
+- 测试失败的本质是函数触发 panic。
+- 可以直接用 `panic!` 宏让测试失败并输出自定义信息。
+
+```rust
+#[test]
+fn fail_test() {
+    panic!("Make this test fail");
+}
+```
+
+---
+
+## 检查 panic 的测试
+
+- 用 `#[should_panic]` 属性修饰测试函数，断言它会 panic，否则算失败。
+
+```rust
+#[test]
+#[should_panic]
+fn test_panics() {
+    panic!("This is a deliberate panic");
+}
+```
+
+- 可以用 `expected = "xxx"` 指定 panic 消息的一部分，更精确地匹配异常原因。
+
+```rust
+#[test]
+#[should_panic(expected = "out of range")]
+fn test_out_of_range() {
+    guess_new(200);
+}
+```
+
+---
+
+## 使用 Result<T, E> 的测试
+
+- 测试函数可以返回 `Result<(), E>`，这样可用 `?` 操作符处理错误。
+- 测试通过时返回 `Ok(())`，失败时返回 `Err(...)`。
+
+```rust
+#[test]
+fn it_works() -> Result<(), String> {
+    let result = add(2, 2);
+    if result == 4 {
+        Ok(())
+    } else {
+        Err(String::from("two plus two does not equal four"))
+    }
+}
+```
+
+- 注意：使用 Result 的测试不支持 `#[should_panic]`。
+
+---
+
+## 运行和管理测试
+
+- 运行所有测试：`cargo test`
+- 只运行指定测试：`cargo test test_name`
+- 可以忽略测试（详见后续章节）
+
+---
+
+## 典型测试模式总结
+
+1. **等值断言**：assert_eq!、assert_ne!
+2. **条件断言**：assert!
+3. **异常断言**：#[should_panic]
+4. **自定义提示**：assert!(cond, "message {}", info)
+5. **测试返回 Result 支持 ? 运算符**
+
+---
+
+## 小结
+
+- Rust 测试机制简单易用，断言宏丰富，支持精确定位和自定义提示。
+- 推荐：每个功能都写测试，及时发现逻辑错误。
+- 测试不仅验证正确性，还能作为代码文档，指导后续开发和维护。
+
+---
